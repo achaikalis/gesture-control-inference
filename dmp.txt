@@ -1,0 +1,19 @@
+// if (imu.dataReady()) {
+      //   imu.update(UPDATE_ACCEL);
+
+      //   Serial.println("I'm here");
+        
+      //   unsigned long currentTime = millis();
+      //   float initial_linear_ax = imu.calcAccel(imu.ax);
+      //   float initial_linear_ay = imu.calcAccel(imu.ay);
+      //   float initial_linear_az = imu.calcAccel(imu.az);
+      //   float norm = sqrt(pow(initial_linear_ax, 2) + pow(initial_linear_ay, 2) + pow(initial_linear_az, 2));
+        
+      //   if (norm > ACCEL_THRESHOLD && (currentTime - lastTriggerTime > DEBOUNCE_TIME)) {
+      //     Serial.println("Acceleration threshold exceeded - Switching to INFERENCE state");
+      //     current_state = STATE_INFERENCE;
+      //     lastTriggerTime = currentTime;
+      //   }
+      // }
+      
+      // delay(50);
