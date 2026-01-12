@@ -15,18 +15,24 @@
 #define LEDG    (23u)
 #define LEDB    (24u)
 
-#define SAMPLE_RATE 100
-#define WINDOW_MS 4000
-#define TOTAL_SAMPLES ((SAMPLE_RATE * WINDOW_MS) / 1000)
-#define FEATURES_PER_SAMPLE 7
+#define SAMPLE_RATE            100
+#define WINDOW_MS              4000
+#define TIME_SHIFT_MS          200
+#define FEATURES_PER_SAMPLE    7
+
+#define TOTAL_SAMPLES          ((SAMPLE_RATE * WINDOW_MS) / 1000)
+#define SHIFT_SAMPLES          ((SAMPLE_RATE * TIME_SHIFT_MS) / 1000)
+
 #define EI_FEATURE_BUFFER_SIZE (TOTAL_SAMPLES * FEATURES_PER_SAMPLE)
+
+#define BLE_ON 0
 
 // enum State { STATE_IDLE, STATE_INFERENCE };
 // State current_state = STATE_IDLE;
 
 float ei_feature_buffer[EI_FEATURE_BUFFER_SIZE];
 
-/* Confidence Threshold (Worst: 0 to Best: 1)*/
+/* Confidence Threshold (Worst: 0 to Best: 1) */
 const float CONFIDENCE_THRESHOLD = 0.7;
 
 const float a_mag[3][3] = {

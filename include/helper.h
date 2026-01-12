@@ -71,16 +71,10 @@ EulerAngles QuaternionToEuler(Quaternion q);
 Quaternion MultiplyQuaternions(Quaternion q1, Quaternion q2);
 
 /**
- * @brief Prints the current IMU data to the serial port.
+ * @brief ...
  * 
- * This function should be called after dmpUpdateFifo() has been invoked to ensure
- * that the latest IMU data is available. It formats and outputs accelerometer,
- * gyroscope, magnetometer, and quaternion values to the serial port.
- * 
- * @note The quaternion values from the IMU are stored in Q30 long format and
- *       are converted to floating-point values between -1 and 1.
  */
-int PrintIMUData (void);
+bool collect_samples(int n, int start_index);
 
 /**
  * @brief      Run Continuous Inference
