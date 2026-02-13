@@ -2,9 +2,13 @@
 
 #include <math.h>
 #include <stdio.h>
+
 #include <Arduino.h>
+
 #include <ArduinoBLE.h>
+
 #include <SparkFunMPU9250-DMP.h>
+
 #include "gesture-control_inferencing.h"
 
 #include "include/helper.h"
@@ -43,7 +47,7 @@ void setup() {
     }
   }
 
-  // InitializeBLE();
+  InitializeBLE();
 
   /* IMU and Magnetometer Configuration */
   imu.setCompassSampleRate(100);
@@ -89,94 +93,261 @@ void setup() {
       DMP_FEATURE_6X_LP_QUAT |   /* Allows for 6-axis Quaternion calculations */
       DMP_FEATURE_GYRO_CAL,      /* Allows for Gyroscope Calibration */
     100);
+
+  pinMode(LEDR, OUTPUT);
+  pinMode(LEDG, OUTPUT);
+  pinMode(LEDB, OUTPUT);
 }
+
+// void loop() {
+//   digitalWrite(LEDR, 1);
+//   digitalWrite(LEDG, 0);
+//   digitalWrite(LEDB, 1);
+
+//   if (imu.fifoAvailable() && imu.dmpUpdateFifo() == INV_SUCCESS) {
+//     if (!buffer_filled) return;
+
+//     unsigned long now = millis();
+//     if (now - last_hop < HOP_MS) return;
+//     last_hop = now;
+
+//     memmove(
+//       ei_feature_buffer,
+//       ei_feature_buffer + (SHIFT_SAMPLES * FEATURES_PER_SAMPLE),
+//       (TOTAL_SAMPLES - SHIFT_SAMPLES) * FEATURES_PER_SAMPLE * sizeof(float));
+
+//     int tail_index = (TOTAL_SAMPLES - SHIFT_SAMPLES) * FEATURES_PER_SAMPLE;
+
+//     bool ok = collect_samples(SHIFT_SAMPLES, tail_index);
+//     if (!ok) {
+//       Serial.println("Hop fill failed");
+//       return;
+//     }
+
+//     run_inference();
+//   }
+// }
 
 void loop() {
-  digitalWrite(LEDR, 1);
-  digitalWrite(LEDG, 0);
-  digitalWrite(LEDB, 1);
+  static BLEDevice central;
+  if (!central) central = BLE.central();
 
-  if (imu.fifoAvailable() && imu.dmpUpdateFifo() == INV_SUCCESS) {
-    /* Perform inference on the initial non-left-shifted buffer */
-    collect_samples(TOTAL_SAMPLES, 0);
-    run_inference();
+  if (central) {
+    while (central.connected()) {
+      /* IDLE State (BLUE LED) */
+      digitalWrite(LEDB, HIGH);
+      digitalWrite(LEDR, LOW);
+      digitalWrite(LEDG, LOW);
 
-    /* Shift buffer to the left (0.2 seconds) */
-    memmove(
-      ei_feature_buffer,                                                      /* Initial Buffer */
-      ei_feature_buffer + (SHIFT_SAMPLES * FEATURES_PER_SAMPLE),              /* Left Shifted Buffer */
-      (TOTAL_SAMPLES - SHIFT_SAMPLES) * FEATURES_PER_SAMPLE * sizeof(float)); /* Left Shifted Block Size */
+      Serial.println("=== Start Sampling (4 seconds) ===");
 
-    /* Refill buffer at the end */
-    int start_index = (TOTAL_SAMPLES - SHIFT_SAMPLES) * FEATURES_PER_SAMPLE;
+      unsigned long capture_start = millis();
+      int last_second = 0;
+      int samples_collected = 0;
 
-    if (!collect_samples(SHIFT_SAMPLES, start_index)) {
-      Serial.println("The shifted window did not fill compeltely.");
-    }
+      int feature_index = 0;
+      while (samples_collected < TOTAL_SAMPLES) {
+        unsigned long elapsed = millis() - capture_start;
+        int current_second = 4 - (elapsed / 1000);
 
-    /* Delay for 1 second */
-    delay(1000);
+        if (current_second != last_second && current_second >= 0) {
+          Serial.print("Countdown: ");
+          Serial.print(current_second);
+          Serial.println(" s");
+          last_second = current_second;
 
-    /* Perform inference on the left shifted buffer */
-    run_inference();
-  }
-}
+          digitalWrite(LEDR, HIGH);
+          delay(100); /* Quick Blink for each Second (RED LED) */
+          digitalWrite(LEDR, LOW);
+        }
 
-bool collect_samples(int n_samples, int start_index) {
-  int feature_index = start_index;
-  int samples_collected = 0;
+        if (imu.fifoAvailable() && imu.dmpUpdateFifo() == INV_SUCCESS) {
+          if (feature_index + FEATURES_PER_SAMPLE <= TOTAL_SAMPLES * FEATURES_PER_SAMPLE) {
+            ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qw);
+            ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qx);
+            ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qy);
+            ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qz);
 
-  const unsigned long TIMEOUT_MS = 5000;
-  unsigned long start_time = millis();
+            ei_feature_buffer[feature_index++] = imu.calcAccel(imu.ax);
+            ei_feature_buffer[feature_index++] = imu.calcAccel(imu.ay);
+            ei_feature_buffer[feature_index++] = imu.calcAccel(imu.az);
 
-  while (samples_collected < n_samples) {
-    if (millis() - start_time > TIMEOUT_MS || millis() < start_time) {
-      Serial.println("collect_samples() has hit a timeout!");
-      break;
-    }
-
-    if (imu.fifoAvailable() && imu.dmpUpdateFifo() == INV_SUCCESS) {
-      if (feature_index + FEATURES_PER_SAMPLE <= EI_FEATURE_BUFFER_SIZE) {
-        /* Raw Feature Reading */
-        float q0 = imu.calcQuat(imu.qw);
-        float q1 = imu.calcQuat(imu.qx);
-        float q2 = imu.calcQuat(imu.qy);
-        float q3 = imu.calcQuat(imu.qz);  
-
-        float ax = imu.calcAccel(imu.ax);
-        float ay = imu.calcAccel(imu.ay);
-        float az = imu.calcAccel(imu.az);
-
-        /* Raw Feature Packing */
-        ei_feature_buffer[feature_index++] = q0;
-        ei_feature_buffer[feature_index++] = q1;
-        ei_feature_buffer[feature_index++] = q2;
-        ei_feature_buffer[feature_index++] = q3;
-        ei_feature_buffer[feature_index++] = ax;
-        ei_feature_buffer[feature_index++] = ay;
-        ei_feature_buffer[feature_index++] = az;
-
-        samples_collected++;
-
-      } else {
-        Serial.println("Prevented the buffer from overflowing!");
-        break;
+            samples_collected++;
+          }
+        } else {
+          delay(1);
+        }
       }
-    } else {
-      delay(1);
-    }
-  }
 
-  return samples_collected == n_samples;
+      Serial.println("=== Sampling Completed ===");
+
+      /* Inference State (GREEN LED) */
+      digitalWrite(LEDG, HIGH);
+      run_inference();
+      digitalWrite(LEDG, LOW);
+
+      memset(ei_feature_buffer, 0, sizeof(ei_feature_buffer));
+      Serial.println("=== Next Sampling (4 seconds) ===");
+    }
+
+    /* After disconnecting, reset Central to allow for new connections */
+    central = BLEDevice();
+  }
 }
+
+// bool collect_samples(int n_samples, int start_index) {
+//   int samples_collected = 0;
+//   int feature_index = start_index;
+
+//   unsigned long start_time = millis();
+//   const unsigned long TIMEOUT_MS = 5000;
+
+//   while (samples_collected < n_samples) {
+//     if (millis() - start_time > TIMEOUT_MS || millis() < start_time) break;
+
+//     if (imu.fifoAvailable() && imu.dmpUpdateFifo() == INV_SUCCESS) {
+//       if (feature_index + FEATURES_PER_SAMPLE <= TOTAL_SAMPLES * FEATURES_PER_SAMPLE) {
+//         ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qw);
+//         ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qx);
+//         ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qy);
+//         ei_feature_buffer[feature_index++] = imu.calcQuat(imu.qz);
+//         ei_feature_buffer[feature_index++] = imu.calcAccel(imu.ax);
+//         ei_feature_buffer[feature_index++] = imu.calcAccel(imu.ay);
+//         ei_feature_buffer[feature_index++] = imu.calcAccel(imu.az);
+//         samples_collected++;
+//       } else break;
+//     } else {
+//       delay(1);
+//     }
+//   }
+
+//   return samples_collected == n_samples;
+// }
+
+// void run_inference() {
+//   signal_t signal;
+//   numpy::signal_from_buffer(ei_feature_buffer, EI_FEATURE_BUFFER_SIZE, &signal);
+
+//   ei_impulse_result_t result;
+//   EI_IMPULSE_ERROR rc = run_classifier(&signal, &result, false);
+
+//   if (rc != EI_IMPULSE_OK) {
+//     ei_printf("Inference ERROR: %d\n", rc);
+//     return;
+//   }
+
+//   unsigned long timestamp = millis();
+// #if BLE_ON
+//   ClassificationTimestamp.writeValue((byte *)&timestamp, sizeof(timestamp));
+// #endif
+
+//   ei_printf("\n === Inference Results: ===\n");
+
+//   float best = 0.0f;
+//   int best_i = -1;
+
+//   for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+//     ei_printf("%s: %.5f\r\n", ei_classifier_inferencing_categories[i], result.classification[i].value);
+// #if BLE_ON
+//     ClassificationValue.writeValue((byte *)&result.classification[i].value, sizeof(result.classification[i].value));
+// #endif
+//     if (result.classification[i].value > best) {
+//       best = result.classification[i].value;
+//       best_i = i;
+//     }
+//   }
+
+//   if (best_i >= 0 && best > EI_CLASSIFIER_THRESHOLD) {
+//     String predicted_gesture = ei_classifier_inferencing_categories[best_i];
+//     Serial.print(">>> Predicted Gesture: ");
+//     Serial.println(predicted_gesture);
+//     Serial.println("====================");
+
+// #if BLE_ON
+//     ClassificationLabel.writeValue((byte *)&predicted_gesture, sizeof(predicted_gesture));
+// #endif
+
+//     digitalWrite(LEDG, 1);
+//     delay(100);
+//     digitalWrite(LEDG, 0);
+
+//     /* Flush buffer by shifting out only the portion that contributed to current classification */
+//     // memmove(
+//     //   ei_feature_buffer,
+//     //   ei_feature_buffer + SHIFT_SAMPLES * FEATURES_PER_SAMPLE,
+//     //   (TOTAL_SAMPLES - SHIFT_SAMPLES) * FEATURES_PER_SAMPLE * sizeof(float));
+
+//     /* Refill tail */
+//     // collect_samples(SHIFT_SAMPLES, (TOTAL_SAMPLES - SHIFT_SAMPLES) * FEATURES_PER_SAMPLE);
+
+//     memset(ei_feature_buffer, 0, sizeof(ei_feature_buffer));
+//     collect_samples(TOTAL_SAMPLES, 0);
+//     buffer_filled = true;
+
+//   } else {
+//     Serial.println(">>> No Confident Classification.");
+//     Serial.println("====================");
+//   }
+
+// #if BLE_ON
+//   DspTiming.writeValue((byte *)&result.timing.dsp, sizeof(result.timing.dsp));
+//   TimingClassification.writeValue((byte *)&result.timing.classification, sizeof(result.timing.classification));
+//   TimingAnomaly.writeValue((byte *)&result.timing.anomaly, sizeof(result.timing.anomaly));
+// #endif
+
+// #if EI_CLASSIFIER_HAS_ANOMALY == 1
+// #if BLE_ON
+//   ClassificationAnomaly.writeValue((byte *)&result.anomaly, sizeof(result.anomaly));
+// #endif
+// #endif
+
+//   /* Inference Diagnostic Logger */
+//   {
+//     unsigned long now = millis();
+
+//     float best = 0.0f;
+//     int best_i = -1;
+//     for (int i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+//       if (result.classification[i].value > best) {
+//         best = result.classification[i].value;
+//         best_i = i;
+//       }
+//     }
+
+//     /* Confidence Slope Calculation */
+//     float delta_p = fabs(best - last_best_conf);
+//     unsigned long hop_dt = (last_infer_ts == 0) ? 0 : (now - last_infer_ts);
+
+//     Serial.print("HOP_DT(ms): ");
+//     Serial.print(hop_dt);
+
+//     Serial.print(" | LABEL: ");
+//     Serial.print(best_i >= 0 ? ei_classifier_inferencing_categories[best_i] : "none");
+
+//     Serial.print(" | CONF: ");
+//     Serial.print(best, 4);
+
+//     Serial.print(" | ΔCONF: ");
+//     Serial.println(delta_p, 4);
+
+//     if (best_i != last_best_label && last_best_label != -1) {
+//       Serial.print("LABEL SWITCH after ");
+//       Serial.print(hop_dt);
+//       Serial.println(" ms");
+//     }
+
+//     last_infer_ts = now;
+//     last_best_conf = best;
+//     last_best_label = best_i;
+//   }
+// }
 
 void run_inference() {
   signal_t signal;
-  numpy::signal_from_buffer(ei_feature_buffer, EI_FEATURE_BUFFER_SIZE, &signal);
+  numpy::signal_from_buffer(ei_feature_buffer, TOTAL_SAMPLES * FEATURES_PER_SAMPLE, &signal);
 
   ei_impulse_result_t result;
   EI_IMPULSE_ERROR rc = run_classifier(&signal, &result, false);
-
   if (rc != EI_IMPULSE_OK) {
     ei_printf("Inference ERROR: %d\n", rc);
     return;
@@ -187,53 +358,34 @@ void run_inference() {
   ClassificationTimestamp.writeValue((byte *)&timestamp, sizeof(timestamp));
 #endif
 
-  ei_printf("Inference Results:\n");
-  
-  String predicted_gesture = "";
+  float best = 0.0f;
+  int best_i = -1;
   for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-    ei_printf("  %s: %.5f\r\n", ei_classifier_inferencing_categories[i], result.classification[i].value);
+    ei_printf("%s: %.5f\n", ei_classifier_inferencing_categories[i], result.classification[i].value);
 #if BLE_ON
     ClassificationValue.writeValue((byte *)&result.classification[i].value, sizeof(result.classification[i].value));
 #endif
-
-    if ((result.classification[i].value > EI_CLASSIFIER_THRESHOLD)) {
-      predicted_gesture = result.classification[i].label;
-      Serial.println(">>> Predicted Gesture:");
-      Serial.println(predicted_gesture);
-
-#if BLE_ON
-      ClassificationLabel.writeValue((byte *)&predicted_gesture, sizeof(predicted_gesture));
-#endif
-
-      digitalWrite(LEDG, 1);
-      delay(100);
-      digitalWrite(LEDG, 0);
-
-      memset(ei_feature_buffer, 0, sizeof(ei_feature_buffer));
-
-      delay(2500);
-
-    } else {
-      Serial.println(">>> No Cofident Classification.");
+    if (result.classification[i].value > best) {
+      best = result.classification[i].value;
+      best_i = i;
     }
   }
 
-  ei_printf("Profiling: %d\r\n", result);
-  ei_printf("Timing: DSP %d ms, inference %d ms, anomaly %d ms\r\n",
-            result.timing.dsp, result.timing.classification, result.timing.anomaly);
-
+  if (best_i >= 0 && best > EI_CLASSIFIER_THRESHOLD) {
+    String predicted_gesture = ei_classifier_inferencing_categories[best_i];
+    Serial.print(">>> Predicted Gesture: ");
+    Serial.println(predicted_gesture);
 #if BLE_ON
-  DspTiming.writeValue((byte *)&result.timing.dsp, sizeof(result.timing.dsp));
-  TimingClassification.writeValue((byte *)&result.timing.classification, sizeof(result.timing.classification));
-  TimingAnomaly.writeValue((byte *)&result.timing.anomaly, sizeof(result.timing.anomaly));
+    ClassificationLabel.writeValue((byte *)&predicted_gesture, sizeof(predicted_gesture));
 #endif
+  } else {
+    Serial.println(">>> No Confident Classification.");
+  }
 
 #if EI_CLASSIFIER_HAS_ANOMALY == 1
-  ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
 #if BLE_ON
   ClassificationAnomaly.writeValue((byte *)&result.anomaly, sizeof(result.anomaly));
 #endif
-
 #endif
 }
 
@@ -261,17 +413,19 @@ void InitializeBLE(void) {
   BLE.setDeviceName(BLE_DEVICE_NAME);
   BLE.setLocalName(BLE_LOCAL_NAME);
   BLE.setAdvertisingInterval(BLE_ADVERTISING_INTERVAL);
-  BLE.setAdvertisedService(InferenceDataService);
 
   InferenceDataService.addCharacteristic(ClassificationTimestamp);
   InferenceDataService.addCharacteristic(ClassificationValue);
   InferenceDataService.addCharacteristic(ClassificationLabel);
   InferenceDataService.addCharacteristic(ClassificationAnomaly);
+
   InferenceDataService.addCharacteristic(DspTiming);
   InferenceDataService.addCharacteristic(TimingClassification);
   InferenceDataService.addCharacteristic(TimingAnomaly);
 
   BLE.addService(InferenceDataService);
+  BLE.setAdvertisedService(InferenceDataService);
+  
   BLE.advertise();
 
   BLE.setEventHandler(BLEConnected, blePeripheralConnectHandler);
@@ -287,9 +441,3 @@ void blePeripheralConnectHandler(BLEDevice central) {
 void blePeripheralDisconnectHandler(BLEDevice central) {
   Serial.println("The peripheral has disconnected from device with MAC Address: " + central.address());
 }
-
-// signal.total_length = EI_FEATURE_BUFFER_SIZE;
-// signal.get_data = [](size_t offset, size_t length, float *out_ptr) -> int {
-//   memcpy(out_ptr, ei_feature_buffer + offset, length * sizeof(float));
-//   return 0;
-// };

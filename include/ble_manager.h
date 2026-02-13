@@ -1,10 +1,10 @@
 /**
  * @file BLEManager.h
- * @brief Manages BLE services and characteristics for the Orthopedic Rehabilitation Gear
+ * @brief Manages BLE services and characteristics for the Gesture Control Wearable
  * 
  * This header file defines the Bluetooth Low Energy (BLE) functionality for enabling
  * services and characteristic used by the Arduino Nano 33 BLE Sense Rev2 in the
- * Orthopedic Rehabilitation Gear.
+ * Gesture Control Wearable.
  * 
  */
 
