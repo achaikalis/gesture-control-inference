@@ -1,21 +1,22 @@
 /**
  * @file BLEManager.h
- * @brief Manages BLE services and characteristics for the Gesture Control Wearable
- * 
- * This header file defines the Bluetooth Low Energy (BLE) functionality for enabling
- * services and characteristic used by the Arduino Nano 33 BLE Sense Rev2 in the
- * Gesture Control Wearable.
- * 
+ * @brief Manages BLE services and characteristics for the Gesture Control
+ * Wearable
+ *
+ * This header file defines the Bluetooth Low Energy (BLE) functionality for
+ * enabling services and characteristic used by the Arduino Nano 33 BLE Sense
+ * Rev2 in the Gesture Control Wearable.
+ *
  */
 
 #ifndef BLEMANAGER_H_
-#define BLEMANAGER_H_ 
+#define BLEMANAGER_H_
 
 #include "Arduino.h"
 #include "ArduinoBLE.h"
 
 #define BLE_DEVICE_NAME "Arduino Nano 33 BLE Sense Rev2"
-#define BLE_LOCAL_NAME  "Gesture Control Wearable"
+#define BLE_LOCAL_NAME "Gesture Control Wearable"
 #define BLE_BUFFER_SIZE 20
 #define BLE_ADVERTISING_INTERVAL (80 * 0.625) /* in (ms) */
 
@@ -79,8 +80,9 @@ extern "C" {
 #endif
 
 /**
- * @brief Initializes the Bluetooth Low Energy (BLE) functionality for the device.
- * 
+ * @brief Initializes the Bluetooth Low Energy (BLE) functionality for the
+ * device.
+ *
  * This function sets up the BLE peripheral with device name and services. It:
  * 1. Begins the BLE peripheral operation
  * 2. Sets the device and local name for the BLE device
@@ -92,16 +94,16 @@ extern "C" {
  *    - Current Time Service
  *    - Custom Orientation Data Service
  * 4. Starts advertising the BLE peripheral
- * 
+ *
  * The function blocks if BLE initialization fails until it succeeds.
- * 
+ *
  * @return void
  */
-void InitializeBLE (void);
+void InitializeBLE(void);
 
-void blePeripheralConnectHandler (BLEDevice central);
+void blePeripheralConnectHandler(BLEDevice central);
 
-void blePeripheralDisconnectHandler (BLEDevice central);
+void blePeripheralDisconnectHandler(BLEDevice central);
 
 #ifdef __cplusplus
 }

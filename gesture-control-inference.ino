@@ -199,47 +199,105 @@ void run_inference() {
   signal_t signal;
   numpy::signal_from_buffer(ei_feature_buffer, TOTAL_SAMPLES * FEATURES_PER_SAMPLE, &signal);
 
+  // Capture inference timestamp (8 bytes for Python compatibility)
+  uint64_t timestamp = (uint64_t)millis();
+  
+  // Run classifier
   ei_impulse_result_t result;
   EI_IMPULSE_ERROR rc = run_classifier(&signal, &result, false);
+  
   if (rc != EI_IMPULSE_OK) {
     ei_printf("Inference ERROR: %d\n", rc);
     return;
   }
 
-  unsigned long timestamp = millis();
-#if BLE_ON
-  ClassificationTimestamp.writeValue((byte *)&timestamp, sizeof(timestamp));
-#endif
-
-  float best = 0.0f;
-  int best_i = -1;
+  // Find best classification
+  float best_value = 0.0f;
+  int best_idx = -1;
+  
   for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
     ei_printf("%s: %.5f\n", ei_classifier_inferencing_categories[i], result.classification[i].value);
-#if BLE_ON
-    ClassificationValue.writeValue((byte *)&result.classification[i].value, sizeof(result.classification[i].value));
-#endif
-    if (result.classification[i].value > best) {
-      best = result.classification[i].value;
-      best_i = i;
+    if (result.classification[i].value > best_value) {
+      best_value = result.classification[i].value;
+      best_idx = i;
     }
   }
 
-  if (best_i >= 0 && best > EI_CLASSIFIER_THRESHOLD) {
-    String predicted_gesture = ei_classifier_inferencing_categories[best_i];
-    Serial.print(">>> Predicted Gesture: ");
-    Serial.println(predicted_gesture);
-#if BLE_ON
-    ClassificationLabel.writeValue((byte *)&predicted_gesture, sizeof(predicted_gesture));
-#endif
-  } else {
-    Serial.println(">>> No Confident Classification.");
+  // Determine gesture label
+  String gesture_label = "";
+  if (best_idx >= 0 && best_value > EI_CLASSIFIER_THRESHOLD) {
+    gesture_label = ei_classifier_inferencing_categories[best_idx];
+    Serial.print(">>> Gesture: ");
+    Serial.println(gesture_label);
   }
 
-#if EI_CLASSIFIER_HAS_ANOMALY == 1
-#if BLE_ON
-  ClassificationAnomaly.writeValue((byte *)&result.anomaly, sizeof(result.anomaly));
-#endif
-#endif
+  // Get anomaly score
+  float anomaly_score = result.anomaly;
+
+  // ===== WRITE ALL 7 CHARACTERISTICS =====
+  // NOTE: REMOVED #if BLE_ON conditional - characteristics must be written UNCONDITIONALLY
+  
+  // 1. Classification Timestamp (8 bytes, uint64_t milliseconds)
+  if (!ClassificationTimestamp.writeValue((byte *)&timestamp, sizeof(timestamp))) {
+    Serial.println("ERROR: Failed to write timestamp characteristic");
+  } else {
+    Serial.print("OK: Wrote timestamp = ");
+    Serial.println((long)timestamp);
+  }
+  
+  // 2. Classification Value (4 bytes, float)
+  if (!ClassificationValue.writeValue((byte *)&best_value, sizeof(best_value))) {
+    Serial.println("ERROR: Failed to write value characteristic");
+  } else {
+    Serial.print("OK: Wrote value = ");
+    Serial.println(best_value);
+  }
+  
+  // 3. Classification Label (variable length string)
+  if (!ClassificationLabel.writeValue((uint8_t *)gesture_label.c_str(), gesture_label.length())) {
+    Serial.println("ERROR: Failed to write label characteristic");
+  } else {
+    Serial.print("OK: Wrote label = ");
+    Serial.println(gesture_label);
+  }
+  
+  // 4. Classification Anomaly (4 bytes, float)
+  if (!ClassificationAnomaly.writeValue((byte *)&anomaly_score, sizeof(anomaly_score))) {
+    Serial.println("ERROR: Failed to write anomaly characteristic");
+  } else {
+    Serial.print("OK: Wrote anomaly = ");
+    Serial.println(anomaly_score);
+  }
+
+  // 5. DSP Timing (4 bytes, uint32_t milliseconds)
+  uint32_t dsp_timing = (uint32_t)result.timing.dsp;
+  if (!DspTiming.writeValue((byte *)&dsp_timing, sizeof(dsp_timing))) {
+    Serial.println("ERROR: Failed to write DSP timing characteristic");
+  } else {
+    Serial.print("OK: Wrote DSP timing = ");
+    Serial.println(dsp_timing);
+  }
+  
+  // 6. Classification Timing (4 bytes, uint32_t milliseconds)
+  uint32_t classification_timing = (uint32_t)result.timing.classification;
+  if (!TimingClassification.writeValue((byte *)&classification_timing, sizeof(classification_timing))) {
+    Serial.println("ERROR: Failed to write classification timing characteristic");
+  } else {
+    Serial.print("OK: Wrote classification timing = ");
+    Serial.println(classification_timing);
+  }
+  
+  // 7. Anomaly Timing (4 bytes, uint32_t milliseconds)
+  uint32_t anomaly_timing = (uint32_t)result.timing.anomaly;
+  if (!TimingAnomaly.writeValue((byte *)&anomaly_timing, sizeof(anomaly_timing))) {
+    Serial.println("ERROR: Failed to write anomaly timing characteristic");
+  } else {
+    Serial.print("OK: Wrote anomaly timing = ");
+    Serial.println(anomaly_timing);
+  }
+
+  ei_printf(">>> Inference: value=%.5f, label=%s, anomaly=%.5f, ts=%llu, dsp=%lu, clf=%lu, anom=%lu\n", 
+    best_value, gesture_label.c_str(), anomaly_score, timestamp, dsp_timing, classification_timing, anomaly_timing);
 }
 
 Quaternion ComputeInitialQuaternions(float mx, float my) {
@@ -278,7 +336,7 @@ void InitializeBLE(void) {
 
   BLE.addService(InferenceDataService);
   BLE.setAdvertisedService(InferenceDataService);
-  
+
   BLE.advertise();
 
   BLE.setEventHandler(BLEConnected, blePeripheralConnectHandler);
